@@ -16,14 +16,14 @@ namespace MData.Core
             }
         }
 
-        public void UnImplementedNoReturnMethodCall(string methodName, params object[] parameters)
+        public virtual void UnImplementedNoReturnMethodCall(string methodName, params object[] parameters)
         {
-            Console.WriteLine("Calling 'UnImplementedNoReturnMethodCall'\n\t => Method: {0},\n\t Parameters: {1}", methodName, parameters.Select(x => x == null ? "null" : x.ToString()).Aggregate((x, y) => x + ", " + y));   
+            //Console.WriteLine("Calling 'UnImplementedNoReturnMethodCall'\n\t => Method: {0},\n\t Parameters: {1}", methodName, parameters.Select(x => x == null ? "null" : x.ToString()).Aggregate((x, y) => x + ", " + y));   
         }
 
-        public TU UnImplementedMethodCall<TU>(string methodName, params object[] parameters)
+        public virtual TU UnImplementedMethodCall<TU>(string methodName, params object[] parameters)
         {
-            Console.WriteLine("Calling 'UnImplementedMethodCall<{2}>'\n\t => Method: {0},\n\t Parameters: {1}", methodName, parameters.Select(x => x.ToString()).Aggregate((x, y) => x + ", " + y), typeof(T).Name);   
+            //Console.WriteLine("Calling 'UnImplementedMethodCall<{2}>'\n\t => Method: {0},\n\t Parameters: {1}", methodName, parameters.Select(x => x.ToString()).Aggregate((x, y) => x + ", " + y), typeof(T).Name);   
             return default(TU);
         }
 
@@ -31,7 +31,7 @@ namespace MData.Core
 
         protected virtual void Init()
         {
-            Console.WriteLine("Init on {0}", GetType().FullName);
+            //Console.WriteLine("Init on {0}", GetType().FullName);
         }
     }
 }
