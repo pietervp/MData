@@ -7,26 +7,20 @@ namespace MData.SandBox
     {
         static void Main(string[] args)
         {
-            var concreteTest = Core.MData.Resolve<ITest>(typeof(EntityBase<ITest>));
+            var concreteTest = Core.MData.Resolve<ICustomer>();
 
-            concreteTest.Data = "MData";
-
-            Console.WriteLine("This is data: {0}", concreteTest.Data);
-            
-            concreteTest.Test("Test", "1", "2");
-            
             Console.WriteLine(concreteTest.Data);
             Console.ReadLine();
         }
     }
 
-    public class TestLogic : BaseLogic<ITest>
+    public class TestLogic : BaseLogic<ICustomer>
     {
         protected override void Init()
         {
             base.Init();
-
-            EntityBase.RegisterCustomGetMethod(x => x.Data, () => string.Format("this is the data: '{0}'", CurrentInstance.Id));
+            
+            RegisterCustomGetMethod(x => x.Data, () => string.Format("this is the data: '{0}'", CurrentInstance.Id));
             EntityBase.PropertyRetrieved += (sender, args) => Console.WriteLine(args.PropertyName + " was retrieved");
         }
 
@@ -42,25 +36,14 @@ namespace MData.SandBox
     }
 
     [MDataData("Test")]
-    public interface ITest : IId
+    public interface ICustomer : IId
     {
         string Data { get; set; }
-        void Test(params string[] parameters);
     }
 
     [MDataData("No")]
     public interface IId
     {
         int Id { get; set; }
-        int MethodThree(int data);
-        void Gener<T>(T parameter, string test);
-        void Gener<T>(T parameter, int index);
     }
-
-    [MDataData("SimpleTest")]
-    public interface ISimpleTest
-    {
-        void Method();
-    }
-
 }
