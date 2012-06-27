@@ -56,13 +56,14 @@
     <Compile Include="Core\BaseLogic.cs" />
     <Compile Include="Core\EntityBase.cs" />
     <Compile Include="Attributes\GrataDataAttribute.cs" />
+    <Compile Include="Core\MData.cs" />
     <Compile Include="Core\MDataExtensions.cs" />
     <Compile Include="Attributes\GrataLogicAttribute.cs" />
     <Compile Include="Core\INotifyPropertyRetrieved.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Core\Base\PropertyRetrievedArgs.cs" />
     <Compile Include="Core\Base\PropertyRetrievedEventHandler.cs" />
-    <Compile Include="Core\TypeInfo.cs" />
+    <Compile Include="Core\TypeCreator.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Binaries\BLToolkit.4.dll" />

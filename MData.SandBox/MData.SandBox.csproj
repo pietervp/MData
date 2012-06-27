@@ -57,7 +57,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Grata\MData.csproj">
+    <ProjectReference Include="..\MData\MData.csproj">
       <Project>{A3DD29A3-485A-477C-98B2-FC94BCAE039E}</Project>
       <Name>MData</Name>
     </ProjectReference>

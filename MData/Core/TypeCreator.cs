@@ -1,61 +1,67 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using BLToolkit.Reflection.Emit;
-using Ninject;
 using Ninject.Extensions.Conventions.BindingBuilder;
 
 namespace MData.Core
 {
-    public class TypeInfo
+    internal class TypeCreator
     {
-        private static TypeInfo _instance;
-        public static TypeInfo Instance{get { return _instance ?? (_instance = new TypeInfo()); }}
-        internal StandardKernel Kernel { get; set; }
-
         private readonly AssemblyBuilderHelper _assemblyBuilder;
-        private readonly Dictionary<Type, Type> _domainToLogic = new Dictionary<Type, Type>(); 
 
-        private TypeInfo()
+        private readonly IDictionary<Type, Type> _domainToLogic;
+        private readonly ICollection<string> _scannedAssemblies;
+
+        public TypeCreator()
         {
             _assemblyBuilder = new AssemblyBuilderHelper(@".\MData.Generated.Entities.dll");
-            Kernel = new StandardKernel();
+            _scannedAssemblies = new Collection<string>();
+            _domainToLogic = new Dictionary<Type, Type>();
         }
 
-        public void RegisterAssembly()
+        internal void RegisterAssembly(Assembly assembly)
         {
-            var callingAssembly = Assembly.GetCallingAssembly();
-            var typeFilter = new Ninject.Extensions.Conventions.BindingBuilder.TypeFilter();
-            var types = callingAssembly.GetTypes();
+            if (_scannedAssemblies.Contains(assembly.GetName().ToString()))
+                return;
 
-            foreach (var domainType in types.Where(x=> typeFilter.HasAttribute(x, typeof(MDataDataAttribute))))
+            _scannedAssemblies.Add(assembly.GetName().ToString());
+
+            var typeFilter = new Ninject.Extensions.Conventions.BindingBuilder.TypeFilter();
+            var types = assembly.GetTypes();
+
+            foreach (var domainType in types.Where(x => typeFilter.HasAttribute(x, typeof(MDataDataAttribute))))
             {
+                if (_domainToLogic.ContainsKey(domainType))
+                    continue;
+
                 var logicType = GetLogicClass(domainType, types, typeFilter) ?? GetLogicClass(domainType);
 
-                if (logicType == null) 
+                if (logicType == null)
                     continue;
 
                 _domainToLogic.Add(domainType, logicType);
             }
-
-            foreach (var type in _domainToLogic)
-            {
-                RegisterDomainInterface(type.Key, type.Value);
-            }
         }
 
-        public void RegisterDomainInterface(Type domainType, Type logicType, Type baseType = null)
+        internal void RegisterAssembly()
+        {
+            RegisterAssembly(Assembly.GetCallingAssembly());
+        }
+
+        internal Type RegisterDomainInterface(Type domainType, Type logicType, Type baseType = null)
         {
             if (domainType == null || logicType == null)
-                return;
+                return null;
 
             if (!domainType.IsInterface)
-                return;
+                return null;
 
             var generatedFields = new List<FieldBuilder>();
-            var baseClass = baseType ?? typeof(EntityBase<>).MakeGenericType(domainType);
+            var baseClass = baseType ?? typeof(EntityBase);//.MakeGenericType(domainType);
             var mDataAttribute = domainType.GetAttributes<MDataDataAttribute>().FirstOrDefault();
             var toGenerateClassName = mDataAttribute == null ? null : mDataAttribute.Name;
             var typeBuilder = _assemblyBuilder.DefineType(toGenerateClassName ?? domainType.Name + "_" + Guid.NewGuid(), TypeAttributes.Sealed | TypeAttributes.Public, baseClass, domainType);
@@ -78,40 +84,73 @@ namespace MData.Core
                 generatedFields.Add(logicField);
 
                 MapMethods(logicField, logicClassType, interfaceToImplement, typeBuilder);
-                MapProperties(interfaceToImplement, typeBuilder, baseClass);
+                MapProperties(interfaceToImplement, typeBuilder, baseClass, logicField);
             }
 
             //initialize field
             CreateConstructorLogic(generatedFields, typeBuilder, baseClass);
 
-            typeBuilder.Create();
-
-            Kernel.Bind(domainType).To(typeBuilder.Create());
+            return typeBuilder.Create();
         }
 
-        public static void SaveAssemblies()
+        internal void SaveAssemblies()
         {
-            Instance._assemblyBuilder.Save();
+            _assemblyBuilder.Save();
         }
 
-        private Type GetLogicClass(Type mDataInferface)
+        internal Type GetLogicClass(Type mDataInferface)
         {
             return _domainToLogic.ContainsKey(mDataInferface)
                        ? _domainToLogic[mDataInferface]
-                       : typeof (BaseLogic<>).MakeGenericType(mDataInferface);
+                       : SearchLogicClass(mDataInferface);
         }
 
-        public static T Resolve<T>()
+        internal Type SearchLogicClass(Type mDataInferface)
         {
-            return Instance.Kernel.Get<T>();
+            RegisterAssembly(mDataInferface.Assembly);
+
+            foreach (var referencedAssembly in mDataInferface.Assembly.GetModules(false).Select(x=> x.Assembly).Distinct())
+            {
+                RegisterAssembly(referencedAssembly);
+            }
+
+            return _domainToLogic.ContainsKey(mDataInferface) ? _domainToLogic[mDataInferface] : typeof (BaseLogic<>).MakeGenericType(mDataInferface);
+        }
+
+        internal Type RegisterDomainInterface<T>(Type logicType) where T : class
+        {
+             return RegisterDomainInterface(typeof(T), logicType);
+        }
+
+        internal Assembly GetGeneratedAssembly()
+        {
+            return _assemblyBuilder.AssemblyBuilder;
         }
         
-        public void RegisterDomainInterface<T>(Type logicType) where T : class
+        private MethodInfo GetLogicMethod(Type logicClass, MethodInfo methodInfo)
         {
-            RegisterDomainInterface(typeof(T), logicType);
+            var parameterInfos = methodInfo.GetParameters();
+
+            if (methodInfo.IsGenericMethod)
+                return (from mi in logicClass.GetMethods()
+                        where mi.Name == methodInfo.Name
+                        where mi.IsGenericMethodDefinition
+                        where mi.GetParameters().Length == parameterInfos.Length
+                        where mi.ToString() == methodInfo.ToString()
+                        select mi).FirstOrDefault();
+
+            return logicClass.GetMethod(methodInfo.Name, parameterInfos.Select(x => x.ParameterType).ToArray());
         }
 
-        private static void MapProperties(Type mDataInferface, TypeBuilderHelper generatedTypeBuilder, Type entityBase)
+        private Type GetLogicClass(Type domainType, IEnumerable<Type> types, ITypeFilter typeFilter)
+        {
+            var name = domainType.Name;
+            var defaultImplementationName = name.Substring(1);
+
+            return types.Where(x => typeFilter.IsTypeInheritedFromAny(x, new[] { typeof(BaseLogic<>).MakeGenericType(domainType) })).OrderBy(x => x.GetAttributes<MDataLogicAttribute>().Any() ? 0 : x.Name == defaultImplementationName ? 1 : 2).FirstOrDefault();
+        }
+
+        private void MapProperties(Type mDataInferface, TypeBuilderHelper generatedTypeBuilder, Type entityBase, FieldBuilder logicField)
         {
             foreach (var p in mDataInferface.GetProperties())
             {
@@ -120,13 +159,12 @@ namespace MData.Core
                 var getDecl = p.GetGetMethod();
                 var setDecl = p.GetSetMethod();
 
-                CreatePropertyGetMethod(generatedTypeBuilder, p, property, getDecl, entityBase);
-                CreatePropertySetMethod(generatedTypeBuilder, p, property, setDecl, entityBase);
+                CreatePropertyGetMethod(generatedTypeBuilder, p, property, getDecl, entityBase, logicField);
+                CreatePropertySetMethod(generatedTypeBuilder, p, property, setDecl, entityBase, logicField);
             }
         }
 
-        private static void CreatePropertyGetMethod(TypeBuilderHelper generatedTypeBuilder, PropertyInfo p,
-                                                    PropertyBuilder property, MethodInfo getDecl, Type entityBase)
+        private void CreatePropertyGetMethod(TypeBuilderHelper generatedTypeBuilder, PropertyInfo p, PropertyBuilder property, MethodInfo getDecl, Type entityBase, FieldBuilder logicField)
         {
             var name = getDecl == null ? "get_" + p.Name : getDecl.Name;
             var returnType = getDecl == null ? p.PropertyType : getDecl.ReturnType;
@@ -140,16 +178,15 @@ namespace MData.Core
             getBuilder
                 .Emitter
                 .nop
-                .ldarg_0
+                .ldfld(logicField)
                 .ldstr(p.Name)
-                .call(entityBase.GetMethod("GetProperty").MakeGenericMethod(p.PropertyType))
+                .call(logicField.FieldType.GetMethod("GetProperty").MakeGenericMethod(p.PropertyType))
                 .ret();
 
             property.SetGetMethod(getBuilder);
         }
 
-        private static void CreatePropertySetMethod(TypeBuilderHelper generatedTypeBuilder, PropertyInfo p,
-                                                    PropertyBuilder property, MethodInfo setDecl, Type entityBase)
+        private void CreatePropertySetMethod(TypeBuilderHelper generatedTypeBuilder, PropertyInfo p, PropertyBuilder property, MethodInfo setDecl, Type entityBase, FieldBuilder logicField)
         {
             var name = setDecl == null ? "set_" + p.Name : setDecl.Name;
             var parameterTypes = setDecl == null ? new[] { p.PropertyType } : setDecl.GetParameters().Select(x => x.ParameterType).ToArray();
@@ -158,17 +195,17 @@ namespace MData.Core
 
             setBuilder
                 .Emitter
-                .ldarg_0
+                .ldfld(logicField)
                 .ldstr(p.Name)
                 .ldarg_1
-                .call(entityBase.GetMethod("SetProperty").MakeGenericMethod(p.PropertyType))
+                .call(logicField.FieldType.GetMethod("SetProperty").MakeGenericMethod(p.PropertyType))
                 .nop
                 .ret();
 
             property.SetSetMethod(setBuilder);
         }
 
-        private static void CreateConstructorLogic(IEnumerable<FieldBuilder> fieldsToInit, TypeBuilderHelper generatedTypeBuilder, Type entityBase)
+        private void CreateConstructorLogic(IEnumerable<FieldBuilder> fieldsToInit, TypeBuilderHelper generatedTypeBuilder, Type entityBase)
         {
             var constructor = generatedTypeBuilder.DefinePublicConstructor().Emitter;
 
@@ -191,7 +228,7 @@ namespace MData.Core
             constructor.ret();
         }
 
-        private static void MapMethods(FieldInfo logicField, Type logicClass, Type mDataInferface,
+        private void MapMethods(FieldInfo logicField, Type logicClass, Type mDataInferface,
                                        TypeBuilderHelper type)
         {
             //loop all methods of the interface definition
@@ -234,7 +271,7 @@ namespace MData.Core
                     .ldarg(0)
                     .ldfld(logicField);
 
-                var logicMethod = LogicMethod(logicClass, methodInfo);
+                var logicMethod = GetLogicMethod(logicClass, methodInfo);
 
                 if (logicMethod == null)
                 {
@@ -285,34 +322,6 @@ namespace MData.Core
                     .callvirt(logicMethod)
                     .ret();
             }
-        }
-
-        private static MethodInfo LogicMethod(Type logicClass, MethodInfo methodInfo)
-        {
-            var parameterInfos = methodInfo.GetParameters();
-
-            if(methodInfo.IsGenericMethod)
-                return (from mi in logicClass.GetMethods()
-                              where mi.Name == methodInfo.Name
-                              where mi.IsGenericMethodDefinition
-                              where mi.GetParameters().Length == parameterInfos.Length
-                              where mi.ToString() == methodInfo.ToString()
-                              select mi).FirstOrDefault();
-
-            return logicClass.GetMethod(methodInfo.Name, parameterInfos.Select(x => x.ParameterType).ToArray());
-        }
-
-        private static Type GetLogicClass(Type domainType, IEnumerable<Type> types, ITypeFilter typeFilter)
-        {
-            var name = domainType.Name;
-            var defaultImplementationName = name.Substring(1);
-
-            return types.Where(x => typeFilter.IsTypeInheritedFromAny(x, new[] { typeof(BaseLogic<>).MakeGenericType(domainType) })).OrderBy(x => x.GetAttributes<MDataLogicAttribute>().Any() ? 0 : x.Name == defaultImplementationName ? 1 : 2).FirstOrDefault();
-        }
-
-        public static Assembly GetGeneratedAssembly()
-        {
-            return Instance._assemblyBuilder.AssemblyBuilder;
         }
     }
 }
