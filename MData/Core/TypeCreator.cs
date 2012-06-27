@@ -61,7 +61,7 @@ namespace MData.Core
                 return null;
 
             var generatedFields = new List<FieldBuilder>();
-            var baseClass = baseType ?? typeof(EntityBase<>).MakeGenericType(domainType);
+            var baseClass = baseType ?? typeof(EntityBase);//.MakeGenericType(domainType);
             var mDataAttribute = domainType.GetAttributes<MDataDataAttribute>().FirstOrDefault();
             var toGenerateClassName = mDataAttribute == null ? null : mDataAttribute.Name;
             var typeBuilder = _assemblyBuilder.DefineType(toGenerateClassName ?? domainType.Name + "_" + Guid.NewGuid(), TypeAttributes.Sealed | TypeAttributes.Public, baseClass, domainType);
@@ -84,7 +84,7 @@ namespace MData.Core
                 generatedFields.Add(logicField);
 
                 MapMethods(logicField, logicClassType, interfaceToImplement, typeBuilder);
-                MapProperties(interfaceToImplement, typeBuilder, baseClass);
+                MapProperties(interfaceToImplement, typeBuilder, baseClass, logicField);
             }
 
             //initialize field
@@ -150,7 +150,7 @@ namespace MData.Core
             return types.Where(x => typeFilter.IsTypeInheritedFromAny(x, new[] { typeof(BaseLogic<>).MakeGenericType(domainType) })).OrderBy(x => x.GetAttributes<MDataLogicAttribute>().Any() ? 0 : x.Name == defaultImplementationName ? 1 : 2).FirstOrDefault();
         }
 
-        private void MapProperties(Type mDataInferface, TypeBuilderHelper generatedTypeBuilder, Type entityBase)
+        private void MapProperties(Type mDataInferface, TypeBuilderHelper generatedTypeBuilder, Type entityBase, FieldBuilder logicField)
         {
             foreach (var p in mDataInferface.GetProperties())
             {
@@ -159,13 +159,12 @@ namespace MData.Core
                 var getDecl = p.GetGetMethod();
                 var setDecl = p.GetSetMethod();
 
-                CreatePropertyGetMethod(generatedTypeBuilder, p, property, getDecl, entityBase);
-                CreatePropertySetMethod(generatedTypeBuilder, p, property, setDecl, entityBase);
+                CreatePropertyGetMethod(generatedTypeBuilder, p, property, getDecl, entityBase, logicField);
+                CreatePropertySetMethod(generatedTypeBuilder, p, property, setDecl, entityBase, logicField);
             }
         }
 
-        private void CreatePropertyGetMethod(TypeBuilderHelper generatedTypeBuilder, PropertyInfo p,
-                                                    PropertyBuilder property, MethodInfo getDecl, Type entityBase)
+        private void CreatePropertyGetMethod(TypeBuilderHelper generatedTypeBuilder, PropertyInfo p, PropertyBuilder property, MethodInfo getDecl, Type entityBase, FieldBuilder logicField)
         {
             var name = getDecl == null ? "get_" + p.Name : getDecl.Name;
             var returnType = getDecl == null ? p.PropertyType : getDecl.ReturnType;
@@ -179,16 +178,15 @@ namespace MData.Core
             getBuilder
                 .Emitter
                 .nop
-                .ldarg_0
+                .ldfld(logicField)
                 .ldstr(p.Name)
-                .call(entityBase.GetMethod("GetProperty").MakeGenericMethod(p.PropertyType))
+                .call(logicField.FieldType.GetMethod("GetProperty").MakeGenericMethod(p.PropertyType))
                 .ret();
 
             property.SetGetMethod(getBuilder);
         }
 
-        private void CreatePropertySetMethod(TypeBuilderHelper generatedTypeBuilder, PropertyInfo p,
-                                                    PropertyBuilder property, MethodInfo setDecl, Type entityBase)
+        private void CreatePropertySetMethod(TypeBuilderHelper generatedTypeBuilder, PropertyInfo p, PropertyBuilder property, MethodInfo setDecl, Type entityBase, FieldBuilder logicField)
         {
             var name = setDecl == null ? "set_" + p.Name : setDecl.Name;
             var parameterTypes = setDecl == null ? new[] { p.PropertyType } : setDecl.GetParameters().Select(x => x.ParameterType).ToArray();
@@ -197,10 +195,10 @@ namespace MData.Core
 
             setBuilder
                 .Emitter
-                .ldarg_0
+                .ldfld(logicField)
                 .ldstr(p.Name)
                 .ldarg_1
-                .call(entityBase.GetMethod("SetProperty").MakeGenericMethod(p.PropertyType))
+                .call(logicField.FieldType.GetMethod("SetProperty").MakeGenericMethod(p.PropertyType))
                 .nop
                 .ret();
 
