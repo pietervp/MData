@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Security;
 using BLToolkit.Reflection.Emit;
+using MData.Attributes;
+using MData.Core.Base;
+using MData.Core.Configuration;
 using Ninject.Extensions.Conventions.BindingBuilder;
 using TypeFilter = Ninject.Extensions.Conventions.BindingBuilder.TypeFilter;
 
@@ -417,43 +419,6 @@ namespace MData.Core
                 emit
                     .callvirt(logicMethod)
                     .ret();
-            }
-        }
-    }
-
-    public class Reflect<T>
-    {
-        public static MethodInfo GetMethod(Expression<Action<T>> membercall)
-        {
-            var methodCallExpression = membercall.Body as MethodCallExpression;
-            if (methodCallExpression != null)
-            {
-                if(methodCallExpression.Method.IsGenericMethod)
-                    return methodCallExpression.Method.GetGenericMethodDefinition();
-
-                return methodCallExpression.Method;
-            }
-
-            return  null;
-        }
-    }
-
-    public class FoundMultipleLogicImplementationsException : Exception
-    {
-        public Type DomainType { get; set; }
-        public IEnumerable<Type> Candidates { get; set; }
-        
-        public FoundMultipleLogicImplementationsException(Type domainType, IEnumerable<Type> candidates)
-        {
-            DomainType = domainType;
-            Candidates = candidates;
-        }
-
-        public override string Message
-        {
-            get
-            {
-                return string.Format("Found multiple logical implementations for {0}: '{1}'", DomainType.Name, Candidates.Select(x => x.GetName()).Aggregate((x, y) => x + ", " + y));
             }
         }
     }

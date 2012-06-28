@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace MData.Core
+namespace MData.Core.Base
 {
     public class EntityBase : INotifyPropertyChanged, INotifyPropertyRetrieved
     {

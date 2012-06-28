@@ -6,6 +6,7 @@ using System.Data.Objects;
 using System.Linq;
 using System.Reflection;
 using MData.Core;
+using MData.Core.Configuration;
 
 namespace MData.EF
 {
