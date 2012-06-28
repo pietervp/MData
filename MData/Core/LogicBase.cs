@@ -5,9 +5,9 @@ using System.Linq.Expressions;
 
 namespace MData.Core
 {
-    public class BaseLogic<T>
+    public class LogicBase<T> 
     {
-        public BaseLogic()
+        public LogicBase()
         {
             CustomGetters = new Dictionary<string, MulticastDelegate>();
             PropertyBag = new Dictionary<string, object>();
