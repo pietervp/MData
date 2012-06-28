@@ -33,7 +33,7 @@ namespace MData.Core
             var typeFilter = new Ninject.Extensions.Conventions.BindingBuilder.TypeFilter();
             var types = assembly.GetTypes();
 
-            foreach (var domainType in types.Where(x => typeFilter.HasAttribute(x, typeof(MDataDataAttribute))))
+            foreach (var domainType in types.Where(x => typeFilter.HasAttribute(x, typeof(MDataAttribute))))
             {
                 if (_domainToLogic.ContainsKey(domainType))
                     continue;
@@ -60,10 +60,10 @@ namespace MData.Core
             if (!domainType.IsInterface)
                 return null;
 
-            var generatedFields = new List<FieldBuilder>();
-            var baseClass = baseType ?? typeof(EntityBase);//.MakeGenericType(domainType);
-            var mDataAttribute = domainType.GetAttributes<MDataDataAttribute>().FirstOrDefault();
-            var toGenerateClassName = mDataAttribute == null ? null : mDataAttribute.Name;
+            var generatedFields = new Dictionary<Type,FieldBuilder>();
+            var baseClass = baseType ?? typeof(EntityBase);
+            var mDataAttribute = domainType.GetAttributes<MDataAttribute>().FirstOrDefault();
+            var toGenerateClassName = mDataAttribute == null ? null : mDataAttribute.GetName();
             var typeBuilder = _assemblyBuilder.DefineType(toGenerateClassName ?? domainType.Name + "_" + Guid.NewGuid(), TypeAttributes.Sealed | TypeAttributes.Public, baseClass, domainType);
 
             //make sure our new class inherits interface T
@@ -72,23 +72,29 @@ namespace MData.Core
                 .AddInterfaceImplementation(domainType);
 
             //generate all interface implementations
-            foreach (var interfaceToImplement in domainType.GetInterfaces().Where(x => x.GetAttributes<MDataDataAttribute>() != null).Union(new[] { domainType }))
+            foreach (var interfaceToImplement in domainType.GetInterfaces().Where(x => x.GetAttributes<MDataAttribute>() != null || x.GetAttributes<MDataMethodAttribute>() != null).Union(new[] { domainType }).OrderBy(x=> x.HasAttribute<MDataMethodAttribute>()))
             {
-                //skip the generation process if there is no MData Attribute
-                if (interfaceToImplement.GetAttributes<MDataDataAttribute>().FirstOrDefault() == null)
-                    continue;
-
+                FieldBuilder logicField;
+             
+                var isMethodData = interfaceToImplement.HasAttribute<MDataMethodAttribute>();
                 var logicClassType = GetLogicClass(interfaceToImplement);
-                var logicField = typeBuilder.DefineField("logic_" + (logicClassType.Name + "_" + Guid.NewGuid()), logicClassType, FieldAttributes.FamORAssem);
 
-                generatedFields.Add(logicField);
+                if (isMethodData)
+                {
+                    logicField = generatedFields[interfaceToImplement.GetAttributes<MDataMethodAttribute>().First().GetLinkedInterfaceType()];
+                    logicClassType = logicField.FieldType;
+                }
+                else
+                    logicField = typeBuilder.DefineField("logic_" + (logicClassType.GetName() + "_" + Guid.NewGuid()), logicClassType, FieldAttributes.FamORAssem);
+
+                generatedFields.Add(interfaceToImplement, logicField);
 
                 MapMethods(logicField, logicClassType, interfaceToImplement, typeBuilder);
                 MapProperties(interfaceToImplement, typeBuilder, baseClass, logicField);
             }
 
             //initialize field
-            CreateConstructorLogic(generatedFields, typeBuilder, baseClass);
+            CreateConstructorLogic(generatedFields.Select(x=>x.Value), typeBuilder, baseClass);
 
             return typeBuilder.Create();
         }
@@ -114,7 +120,7 @@ namespace MData.Core
                 RegisterAssembly(referencedAssembly);
             }
 
-            return _domainToLogic.ContainsKey(mDataInferface) ? _domainToLogic[mDataInferface] : typeof (BaseLogic<>).MakeGenericType(mDataInferface);
+            return _domainToLogic.ContainsKey(mDataInferface) ? _domainToLogic[mDataInferface] : typeof (LogicBase<>).MakeGenericType(mDataInferface);
         }
 
         internal Type RegisterDomainInterface<T>(Type logicType) where T : class
@@ -147,7 +153,7 @@ namespace MData.Core
             var name = domainType.Name;
             var defaultImplementationName = name.Substring(1);
 
-            return types.Where(x => typeFilter.IsTypeInheritedFromAny(x, new[] { typeof(BaseLogic<>).MakeGenericType(domainType) })).OrderBy(x => x.GetAttributes<MDataLogicAttribute>().Any() ? 0 : x.Name == defaultImplementationName ? 1 : 2).FirstOrDefault();
+            return types.Where(x => typeFilter.IsTypeInheritedFromAny(x, new[] { typeof(LogicBase<>).MakeGenericType(domainType) })).OrderBy(x => x.GetAttributes<MDataLogicAttribute>().Any() ? 0 : x.Name == defaultImplementationName ? 1 : 2).FirstOrDefault();
         }
 
         private void MapProperties(Type mDataInferface, TypeBuilderHelper generatedTypeBuilder, Type entityBase, FieldBuilder logicField)
@@ -178,9 +184,10 @@ namespace MData.Core
             getBuilder
                 .Emitter
                 .nop
+                .ldarg_0
                 .ldfld(logicField)
                 .ldstr(p.Name)
-                .call(logicField.FieldType.GetMethod("GetProperty").MakeGenericMethod(p.PropertyType))
+                .callvirt(logicField.FieldType.GetMethod("GetProperty").MakeGenericMethod(p.PropertyType))
                 .ret();
 
             property.SetGetMethod(getBuilder);
@@ -195,10 +202,11 @@ namespace MData.Core
 
             setBuilder
                 .Emitter
+                .ldarg_0
                 .ldfld(logicField)
                 .ldstr(p.Name)
                 .ldarg_1
-                .call(logicField.FieldType.GetMethod("SetProperty").MakeGenericMethod(p.PropertyType))
+                .callvirt(logicField.FieldType.GetMethod("SetProperty").MakeGenericMethod(p.PropertyType))
                 .nop
                 .ret();
 
@@ -222,7 +230,7 @@ namespace MData.Core
                     .ldarg_0
                     .ldfld(fieldBuilder)
                     .ldarg_0
-                    .callvirt(typeof(BaseLogic<>).MakeGenericType(fieldBuilder.FieldType).GetMethod("set_CurrentInstance"));
+                    .callvirt(typeof(LogicBase<>).MakeGenericType(fieldBuilder.FieldType).GetMethod("set_CurrentInstance"));
             }
 
             constructor.ret();
