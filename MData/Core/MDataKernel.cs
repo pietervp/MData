@@ -7,15 +7,15 @@ using Ninject.Activation;
 namespace MData.Core
 {
     /// <summary>
-    /// MData is the entry point of the framework.
+    /// MDataKernel is the entry point of the framework.
     /// </summary>
-    public class MData
+    public class MDataKernel
     {
         private static readonly Dictionary<Type, Type> BindingCache;
         private static TypeCreator TypeHelper { get; set; }
         private static StandardKernel Kernel { get; set; }
 
-        static MData()
+        static MDataKernel()
         {
             Kernel = new StandardKernel();
             TypeHelper = new TypeCreator();

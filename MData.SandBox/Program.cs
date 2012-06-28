@@ -1,29 +1,21 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Data.Entity;
 using System.Data.Entity.Infrastructure;
-using System.Data.Entity.ModelConfiguration;
-using System.Data.Entity.Validation;
-using System.Data.Objects;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Reflection;
 using MData.Core;
 using MData.EF;
 
 namespace MData.SandBox
 {
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
-            var concreteTest = Core.MData.Resolve<IAdmin>();
-            var concreteTest1 = Core.MData.Resolve<ICustomer>();
-            var concreteTest2 = Core.MData.Resolve<IId>();
+            var concreteTest = MDataKernel.Resolve<IAdmin>();
+            var concreteTest1 = MDataKernel.Resolve<ICustomer>();
+            var concreteTest2 = MDataKernel.Resolve<IId>();
 
-            Core.MData.ExportAssembly();
+            MDataKernel.ExportAssembly();
 
             concreteTest.Test();
             concreteTest.TestReturnMethod();
@@ -33,35 +25,31 @@ namespace MData.SandBox
             Console.WriteLine(concreteTest.Data);
 
             var t = new TestContext();
-            
-            var customer = t.Customers.Create();
-            customer.Data=  "test";
+
+            ICustomer customer = t.Customers.Create();
+            customer.Data = "test";
             t.Customers.Add(customer);
 
-            var firstOrDefault = t.Customers.FirstOrDefault(x => x.Id == 1);
-            var groupBy = t.Customers.GroupBy(x => x.Id).ToList();
-            var queryable = t.Customers.GroupBy(x => x.Data).ToList();
+            ICustomer firstOrDefault = t.Customers.FirstOrDefault(x => x.Id == 1);
+            List<IGrouping<int, ICustomer>> groupBy = t.Customers.GroupBy(x => x.Id).ToList();
+            List<IGrouping<string, ICustomer>> queryable = t.Customers.GroupBy(x => x.Data).ToList();
 
-            var dbEntityEntry = t.Entry(firstOrDefault);
+            DbEntityEntry<ICustomer> dbEntityEntry = t.Entry(firstOrDefault);
 
             t.SaveChanges();
 
             Console.ReadLine();
         }
     }
-    public class TestContext : MDataContext
+
+    public class TestContext : MDbContext
     {
         public MDbSet<ICustomer> Customers { get; set; }
     }
-    
+
     public class TestLogic : LogicBase<ICustomer>, ICustomerMethod
     {
-        protected override void Init()
-        {
-            base.Init();
-            
-            EntityBase.PropertyRetrieved += (sender, args) => Console.WriteLine(args.PropertyName + " was retrieved");
-        }
+        #region ICustomerMethod Members
 
         public void Test()
         {
@@ -81,6 +69,15 @@ namespace MData.SandBox
         {
             return 0;
         }
+
+        #endregion
+
+        protected override void Init()
+        {
+            base.Init();
+
+            EntityBase.PropertyRetrieved += (sender, args) => Console.WriteLine(args.PropertyName + " was retrieved");
+        }
     }
 
     [MData("Admin")]
@@ -95,7 +92,7 @@ namespace MData.SandBox
         string Data { get; set; }
     }
 
-    [MDataMethod(typeof(ICustomer))]
+    [MDataMethod(typeof (ICustomer))]
     public interface ICustomerMethod
     {
         void Test();
