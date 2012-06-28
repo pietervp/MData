@@ -46,6 +46,7 @@
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Security" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -56,7 +57,7 @@
     <Compile Include="Core\LogicBase.cs" />
     <Compile Include="Core\EntityBase.cs" />
     <Compile Include="Attributes\GrataDataAttribute.cs" />
-    <Compile Include="Core\MData.cs" />
+    <Compile Include="Core\MDataKernel.cs" />
     <Compile Include="Core\MDataExtensions.cs" />
     <Compile Include="Attributes\GrataLogicAttribute.cs" />
     <Compile Include="Core\INotifyPropertyRetrieved.cs" />
