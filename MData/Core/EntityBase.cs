@@ -1,14 +1,20 @@
-using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq.Expressions;
 
 namespace MData.Core
 {
-    public class EntityBase : INotifyPropertyChanged, INotifyPropertyRetrieved//, IEntityBase<T>
+    public class EntityBase : INotifyPropertyChanged, INotifyPropertyRetrieved
     {
+        #region INotifyPropertyChanged Members
+
         public event PropertyChangedEventHandler PropertyChanged;
+
+        #endregion
+
+        #region INotifyPropertyRetrieved Members
+
         public event PropertyRetrievedEventHandler PropertyRetrieved;
+
+        #endregion
 
         internal void OnPropertyRetrieved(string propertyName)
         {

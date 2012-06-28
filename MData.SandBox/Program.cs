@@ -1,29 +1,27 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Data.Entity;
 using System.Data.Entity.Infrastructure;
-using System.Data.Entity.ModelConfiguration;
-using System.Data.Entity.Validation;
-using System.Data.Objects;
+using System.Globalization;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Reflection;
 using MData.Core;
 using MData.EF;
 
 namespace MData.SandBox
 {
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
-            var concreteTest = Core.MData.Resolve<IAdmin>();
-            var concreteTest1 = Core.MData.Resolve<ICustomer>();
-            var concreteTest2 = Core.MData.Resolve<IId>();
+            var resolver = MDataConfigurator
+                .Get()
+                .Recreate(false)
+                .With()
+                .BaseTypeForEntity<EntityBase>()
+                .GetResolver();
 
-            Core.MData.ExportAssembly();
+            var concreteTest1 = resolver.Resolve<IAdmin>();
+            var concreteTest = resolver.Resolve<ICustomer>();
+            var concreteTest2 = resolver.Resolve<IId>();
 
             concreteTest.Test();
             concreteTest.TestReturnMethod();
@@ -33,53 +31,64 @@ namespace MData.SandBox
             Console.WriteLine(concreteTest.Data);
 
             var t = new TestContext();
-            
-            var customer = t.Customers.Create();
-            customer.Data=  "test";
+
+            ICustomer customer = t.Customers.Create();
             t.Customers.Add(customer);
 
-            var firstOrDefault = t.Customers.FirstOrDefault(x => x.Id == 1);
-            var groupBy = t.Customers.GroupBy(x => x.Id).ToList();
-            var queryable = t.Customers.GroupBy(x => x.Data).ToList();
-
-            var dbEntityEntry = t.Entry(firstOrDefault);
+            ICustomer firstOrDefault = t.Customers.FirstOrDefault(x => x.Id == 1);
+            List<IGrouping<int, ICustomer>> groupBy = t.Customers.GroupBy(x => x.Id).ToList();
+            List<IGrouping<string, ICustomer>> queryable = t.Customers.GroupBy(x => x.Data).ToList();
+            DbEntityEntry<ICustomer> dbEntityEntry = t.Entry(firstOrDefault);
 
             t.SaveChanges();
 
             Console.ReadLine();
         }
     }
-    public class TestContext : MDataContext
+
+    public class TestContext : MDbContext
     {
         public MDbSet<ICustomer> Customers { get; set; }
+
+        public TestContext() 
+        {
+            
+        }
     }
-    
-    public class TestLogic : LogicBase<ICustomer>, ICustomerMethod
+
+    public class TestLogic : LogicBase<ICustomer>
     {
+        #region ICustomerMethod Members
+
+        //public void Test()
+        //{
+        //    SetProperty(x=> x.Data, "Test");
+        //    Console.WriteLine("HASH:" + GetProperty(x => x.GetHashCode()));
+        //}
+
+        //public int TestReturnMethod()
+        //{
+        //    return 0;
+        //}
+
+        //public int TestReturnMethodWithParameters(string param)
+        //{
+        //    return 0;
+        //}
+
+        //public int TestReturnMethodGeneric<T>(T param)
+        //{
+        //    return 0;
+        //}
+
+        #endregion
+
         protected override void Init()
         {
             base.Init();
-            
-            EntityBase.PropertyRetrieved += (sender, args) => Console.WriteLine(args.PropertyName + " was retrieved");
-        }
 
-        public void Test()
-        {
-        }
-
-        public int TestReturnMethod()
-        {
-            return 0;
-        }
-
-        public int TestReturnMethodWithParameters(string param)
-        {
-            return 0;
-        }
-
-        public int TestReturnMethodGeneric<T>(T param)
-        {
-            return 0;
+            //defining a readonly/calculated property
+            RegisterCustomGetMethod(x=> x.Data, () => CurrentInstance.Id.ToString(CultureInfo.InvariantCulture));
         }
     }
 
@@ -92,10 +101,10 @@ namespace MData.SandBox
     [MData("Customer")]
     public interface ICustomer : IId, ICustomerMethod
     {
-        string Data { get; set; }
+        string Data { get; }
     }
 
-    [MDataMethod(typeof(ICustomer))]
+    [MDataMethod(typeof (ICustomer))]
     public interface ICustomerMethod
     {
         void Test();
