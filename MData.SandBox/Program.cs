@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Data.Entity.Infrastructure;
 using System.Linq;
-using MData.Core;
 using MData.Core.Base;
 using MData.Core.Configuration;
 
@@ -12,7 +11,7 @@ namespace MData.SandBox
     {
         private static void Main(string[] args)
         {
-            var resolver = MDataConfigurator
+            IResolver resolver = MDataConfigurator
                 .Get()
                 .Recreate(false)
                 .With()
