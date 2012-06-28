@@ -1,4 +1,6 @@
-namespace MData.Test
+using MData.Attributes;
+
+namespace MData.Test.Content
 {
     [MData]
     public interface IDecoratedInterface

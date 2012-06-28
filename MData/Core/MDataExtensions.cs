@@ -5,9 +5,9 @@ using System.Linq.Expressions;
 using System.Reflection;
 using BLToolkit.Reflection;
 
-namespace MData
+namespace MData.Core
 {
-    public static class sMDataExtensions
+    public static class MDataExtensions
     {
         public static string GetName(this Type type)
         {

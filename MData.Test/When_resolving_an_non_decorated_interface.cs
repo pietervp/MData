@@ -1,4 +1,5 @@
 ﻿using MData.Core;
+using MData.Test.Content;
 using Machine.Specifications;
 
 namespace MData.Test

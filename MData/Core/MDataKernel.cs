@@ -1,103 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
+using MData.Core.Configuration;
 using Ninject;
 using Ninject.Planning.Bindings;
 
 namespace MData.Core
 {
-    public interface IResolver
-    {
-        T Resolve<T>() where T : class;
-        Dictionary<Type, Type> GetInterfaceMapping();
-        Type GetConcreteType(Type type);
-    }
-
-    public interface IAssemblyConfig
-    {
-        IAssemblyConfig OnlyLookIn(IEnumerable<Assembly> assemblies);
-        IAssemblyConfig AssemblyName(string name);
-        IAssemblyConfig Recreate(bool b);
-        IAssemblyConfig UsingNamespace(string @namespace);
-        IBaseTypeConfig With();
-    }
-
-    public interface IBaseTypeConfig
-    {
-        IBaseTypeConfig BaseTypeForEntity<TEntityBase>() where TEntityBase : EntityBase;
-        IResolver GetResolver();
-    }
-
-    public class MDataConfigurator : IAssemblyConfig, IBaseTypeConfig
-    {
-        internal IEnumerable<Assembly> Assemblies;
-        internal Type EntityType;
-        internal Type BaseLogicType;
-        internal string AssemblyNameForStorage;
-        internal bool ShouldAlwaysRecreate;
-        internal string Namespace;
-        private static MDataKernel _mDataKernel;
-
-        public MDataConfigurator()
-        {
-            AssemblyNameForStorage = @".\MData.Generated.Entities.dll";
-            ShouldAlwaysRecreate = true;
-            Namespace = "MData.Generated.Entities";
-        }
-        
-        public static IAssemblyConfig Get()
-        {
-            return new MDataConfigurator();
-        }
-
-        IAssemblyConfig IAssemblyConfig.OnlyLookIn(IEnumerable<Assembly> assemblies)
-        {
-            Assemblies = assemblies;
-            return this;
-        }
-
-        public IAssemblyConfig AssemblyName(string name)
-        {
-            AssemblyNameForStorage = name;
-            return this;
-        }
-
-        public IAssemblyConfig Recreate(bool shouldRecreate)
-        {
-            ShouldAlwaysRecreate = shouldRecreate;
-            return this;
-        }
-
-        public IAssemblyConfig UsingNamespace(string @namespace)
-        {
-            Namespace = @namespace;
-            return null;
-        }
-
-        IBaseTypeConfig IAssemblyConfig.With()
-        {
-            return this;
-        }
-
-        IBaseTypeConfig IBaseTypeConfig.BaseTypeForEntity<TEntityBase>()
-        {
-            EntityType = typeof(TEntityBase);
-            return this;
-        }
-
-        public static IResolver GetDefaultResolver()
-        {
-            return _mDataKernel;
-        }
-
-        public IResolver GetResolver()
-        {
-            _mDataKernel = new MDataKernel(this);
-            return _mDataKernel;
-        }
-    }
-
     /// <summary>
     /// MDataKernel is the entry point of the framework.
     /// </summary>

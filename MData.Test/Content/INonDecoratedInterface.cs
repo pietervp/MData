@@ -1,4 +1,4 @@
-namespace MData.Test
+namespace MData.Test.Content
 {
     public interface INonDecoratedInterface
     {

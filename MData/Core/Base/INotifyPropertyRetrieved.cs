@@ -1,4 +1,4 @@
-namespace MData
+namespace MData.Core.Base
 {
     public interface INotifyPropertyRetrieved
     {
