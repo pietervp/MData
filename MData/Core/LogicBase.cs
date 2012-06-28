@@ -1,61 +1,40 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Linq.Expressions;
 
 namespace MData.Core
 {
-    public class LogicBase<T> 
+    public class LogicBase
     {
+        protected Dictionary<string, object> PropertyBag { get; set; }
+        protected Dictionary<string, MulticastDelegate> CustomGetters { get; set; }
+
         public LogicBase()
         {
             CustomGetters = new Dictionary<string, MulticastDelegate>();
             PropertyBag = new Dictionary<string, object>();
         }
-        
-        private T _currentInstance;
 
-        private Dictionary<string, object> PropertyBag { get; set; }
-        private Dictionary<string, MulticastDelegate> CustomGetters { get; set; }
-
-        public EntityBase EntityBase { get { return CurrentInstance as EntityBase; } }
-        public T CurrentInstance
+        public virtual TU GetProperty<TU>(string name)
         {
-            get { return _currentInstance; }
-            set { _currentInstance = value; Init(); }
-        }
 
-        public TU GetProperty<TU>(string name)
-        {
-            EntityBase.OnPropertyRetrieved(name);
-
-            var bagValue = default(TU);
+            TU bagValue = default(TU);
 
             if (PropertyBag.ContainsKey(name))
-                bagValue = (TU)PropertyBag[name];
+                bagValue = (TU) PropertyBag[name];
 
             if (CustomGetters.ContainsKey(name))
-                bagValue = (TU)CustomGetters[name].DynamicInvoke();
+                bagValue = (TU) CustomGetters[name].DynamicInvoke();
 
             return bagValue;
         }
 
-        public void SetProperty<TU>(string name, TU value)
+        public virtual void SetProperty<TU>(string name, TU value)
         {
             if (!PropertyBag.ContainsKey(name))
                 PropertyBag.Add(name, value);
             else
                 PropertyBag[name] = value;
-
-            EntityBase.OnPropertyChanged(name);
-        }
-
-        public void RegisterCustomGetMethod<TU>(Expression<Func<T, TU>> property, Func<TU> customerGetter)
-        {
-            if (!CustomGetters.ContainsKey(property.GetPropertyName()))
-                CustomGetters.Add(property.GetPropertyName(), customerGetter);
-            else
-                CustomGetters[property.GetPropertyName()] = customerGetter;
         }
 
         public virtual void UnImplementedNoReturnMethodCall(string methodName, params object[] parameters)
@@ -68,11 +47,68 @@ namespace MData.Core
             //Console.WriteLine("Calling 'UnImplementedMethodCall<{2}>'\n\t => Method: {0},\n\t Parameters: {1}", methodName, parameters.Select(x => x.ToString()).Aggregate((x, y) => x + ", " + y), typeof(T).Name);   
             return default(TU);
         }
-        
+
         protected virtual void Init()
         {
             //Console.WriteLine("Init on {0}", GetType().FullName);
         }
     }
-}
 
+    public class LogicBase<T> : LogicBase
+    {
+        private T _currentInstance;
+
+        public EntityBase EntityBase
+        {
+            get { return CurrentInstance as EntityBase; }
+        }
+
+        public T CurrentInstance
+        {
+            get { return _currentInstance; }
+            set
+            {
+                _currentInstance = value;
+                Init();
+            }
+        }
+
+        public override TU GetProperty<TU>(string name)
+        {
+            EntityBase.OnPropertyRetrieved(name);
+            return base.GetProperty<TU>(name);
+        }
+
+        public override void SetProperty<TU>(string name, TU value)
+        {
+            base.SetProperty(name, value);
+            EntityBase.OnPropertyChanged(name);
+        }
+        
+        public TU GetProperty<TU>(Expression<Func<T, TU>> property)
+        {
+            var memberExpression = property.Body as MemberExpression;
+
+            if (memberExpression != null)
+                return GetProperty<TU>(memberExpression.Member.Name);
+
+            return property.Compile().Invoke(CurrentInstance);
+        }
+
+        public void SetProperty<TU>(Expression<Func<T, TU>> property, TU value)
+        {
+            var memberExpression = property.Body as MemberExpression;
+
+            if (memberExpression != null)
+                SetProperty(memberExpression.Member.Name, value);
+        }
+
+        public void RegisterCustomGetMethod<TU>(Expression<Func<T, TU>> property, Func<TU> customerGetter)
+        {
+            if (!CustomGetters.ContainsKey(property.GetPropertyName()))
+                CustomGetters.Add(property.GetPropertyName(), customerGetter);
+            else
+                CustomGetters[property.GetPropertyName()] = customerGetter;
+        }
+    }
+}

@@ -4,8 +4,6 @@ namespace MData
 {
     public class MDataAttribute : Attribute
     {
-        private string Name { get; set; }
-
         public MDataAttribute()
         {
         }
@@ -15,15 +13,17 @@ namespace MData
             Name = name;
         }
 
+        private string Name { get; set; }
+
         public string GetName()
         {
-            return  Name;
+            return Name;
         }
     }
 
     public class MDataMethodAttribute : Attribute
     {
-        private readonly Type _linkedInterfaceType = null;
+        private readonly Type _linkedInterfaceType;
 
         public MDataMethodAttribute(Type linkedInterfaceType)
         {
