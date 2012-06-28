@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data.Entity.Infrastructure;
-using System.Globalization;
 using System.Linq;
 using MData.Core;
-using MData.EF;
+using MData.Core.Base;
+using MData.Core.Configuration;
 
 namespace MData.SandBox
 {
@@ -44,78 +44,5 @@ namespace MData.SandBox
 
             Console.ReadLine();
         }
-    }
-
-    public class TestContext : MDbContext
-    {
-        public MDbSet<ICustomer> Customers { get; set; }
-
-        public TestContext() 
-        {
-            
-        }
-    }
-
-    public class TestLogic : LogicBase<ICustomer>
-    {
-        #region ICustomerMethod Members
-
-        //public void Test()
-        //{
-        //    SetProperty(x=> x.Data, "Test");
-        //    Console.WriteLine("HASH:" + GetProperty(x => x.GetHashCode()));
-        //}
-
-        //public int TestReturnMethod()
-        //{
-        //    return 0;
-        //}
-
-        //public int TestReturnMethodWithParameters(string param)
-        //{
-        //    return 0;
-        //}
-
-        //public int TestReturnMethodGeneric<T>(T param)
-        //{
-        //    return 0;
-        //}
-
-        #endregion
-
-        protected override void Init()
-        {
-            base.Init();
-
-            //defining a readonly/calculated property
-            RegisterCustomGetMethod(x=> x.Data, () => CurrentInstance.Id.ToString(CultureInfo.InvariantCulture));
-        }
-    }
-
-    [MData("Admin")]
-    public interface IAdmin : ICustomer
-    {
-        string AdminData { get; set; }
-    }
-
-    [MData("Customer")]
-    public interface ICustomer : IId, ICustomerMethod
-    {
-        string Data { get; }
-    }
-
-    [MDataMethod(typeof (ICustomer))]
-    public interface ICustomerMethod
-    {
-        void Test();
-        int TestReturnMethod();
-        int TestReturnMethodWithParameters(string param);
-        int TestReturnMethodGeneric<T>(T param);
-    }
-
-    [MData("IdClass")]
-    public interface IId
-    {
-        int Id { get; set; }
     }
 }

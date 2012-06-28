@@ -1,6 +1,6 @@
 using System;
 
-namespace MData
+namespace MData.Attributes
 {
     public class MDataLogicAttribute : Attribute
     {

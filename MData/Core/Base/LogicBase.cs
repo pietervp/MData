@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq.Expressions;
 
-namespace MData.Core
+namespace MData.Core.Base
 {
     public class LogicBase
     {
