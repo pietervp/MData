@@ -63,7 +63,7 @@ namespace MData.Core.Configuration
 
         public static IResolver GetDefaultResolver()
         {
-            return _mDataKernel;
+            return _mDataKernel ?? Get().Recreate(false).With().GetResolver();
         }
 
         public IResolver GetResolver()
