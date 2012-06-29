@@ -3,7 +3,7 @@ using MData.EF;
 
 namespace MData.SandBox
 {
-    public class TestContext : MDbContext
+    public class DomainContext : MDbContext
     {
         public MDbSet<ICustomer> Customers { get; set; }
 

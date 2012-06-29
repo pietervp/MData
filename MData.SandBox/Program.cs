@@ -4,6 +4,7 @@ using System.Data.Entity.Infrastructure;
 using System.Linq;
 using MData.Core.Base;
 using MData.Core.Configuration;
+using MData.EF;
 
 namespace MData.SandBox
 {
@@ -23,5 +24,6 @@ namespace MData.SandBox
                 t.SaveChanges();
             }
         }
+
     }
 }
