@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Linq;
+using BLToolkit.Common;
 
 namespace MData.Core.Configuration
 {
@@ -52,6 +54,9 @@ namespace MData.Core.Configuration
 
         IBaseTypeConfig IAssemblyConfig.With()
         {
+            if(Assemblies == null || !Assemblies.Any())
+                Assemblies = new[] { Assembly.GetExecutingAssembly(), Assembly.GetEntryAssembly() }.Union(Assembly.GetExecutingAssembly().GetModules().Select(x => x.Assembly).ToArray());
+
             return this;
         }
 
@@ -63,11 +68,14 @@ namespace MData.Core.Configuration
 
         public static IResolver GetDefaultResolver()
         {
-            return _mDataKernel;
+            return _mDataKernel ?? Get().Recreate(true).With().GetResolver().AutoDiscover();
         }
 
         public IResolver GetResolver()
         {
+            if (EntityType == null)
+                EntityType = typeof(Base.EntityBase);
+
             _mDataKernel = new MDataKernel(this);
             return _mDataKernel;
         }
