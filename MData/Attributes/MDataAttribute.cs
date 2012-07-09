@@ -4,16 +4,24 @@ namespace MData.Attributes
 {
     public class MDataAttribute : Attribute
     {
-        public MDataAttribute()
+        public MDataAttribute() 
+            : this(null, true)
         {
         }
 
-        public MDataAttribute(string name)
+        public MDataAttribute(string name, bool persist = true)
         {
             Name = name;
+            Persist = persist;
         }
 
+        private bool Persist { get; set; }
         private string Name { get; set; }
+
+        public bool GetPersist()
+        {
+            return Persist;
+        }
 
         public string GetName()
         {

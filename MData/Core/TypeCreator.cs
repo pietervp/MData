@@ -23,6 +23,7 @@ namespace MData.Core
         private readonly ICollection<string> _scannedAssemblies;
         
         private Assembly _previouslyGeneratedAssembly;
+        private Dictionary<Type, Type> _domainCache;
 
         /// <summary>
         /// Creates a new instance of the TypeCreator class
@@ -38,6 +39,24 @@ namespace MData.Core
             
             _scannedAssemblies = new Collection<string>();
             _domainToLogic = new Dictionary<Type, Type>();
+
+            _domainCache = new Dictionary<Type, Type>();
+        }
+
+        internal void AutoDiscover(IResolver resolver)
+        {
+            var types = _configurator.Assemblies.SelectMany(x => x.GetTypes()).Where(x => x.HasAttribute<MDataAttribute>()).Select(x => x);
+            
+            foreach (var assembly in _configurator.Assemblies)
+            {
+                RegisterAssembly(assembly);
+            }
+
+            foreach (var type in types)
+            {
+                RegisterDomainInterface(type, GetLogicClass(type));
+                resolver.Resolve(type);
+            }
         }
 
         /// <summary>
@@ -99,6 +118,8 @@ namespace MData.Core
             if (!domainType.IsInterface)
                 return null;
 
+            if (_domainCache.ContainsKey(domainType))
+                return _domainCache[domainType];
 #if !DEBUG
             //reuse of previoulsy generated assembly is only allowed in release mode
             if (!_configurator.ShouldAlwaysRecreate && File.Exists(_configurator.AssemblyNameForStorage))
@@ -146,7 +167,11 @@ namespace MData.Core
             CreateConstructorLogic(generatedFields.Select(x => x.Value), typeBuilder, _configurator.EntityType);
 
             //create the concrete type for domainType
-            return typeBuilder.Create();
+            var registerDomainInterface = typeBuilder.Create();
+
+            _domainCache.Add(domainType, registerDomainInterface);
+
+            return registerDomainInterface;
         }
 
         /// <summary>
@@ -317,7 +342,7 @@ namespace MData.Core
             //the Mdatalogic attr go first, then logicclasses who have the default logic name convention, last all others
             var candidates = (from candidate in types
                              let score = candidate.HasAttribute<MDataLogicAttribute>() ? 0 : candidate.Name == defaultImplementationName ? 1 : 2
-                             where candidate.IsAssignableFrom(typeof(LogicBase<>).MakeGenericType(domainType))
+                             where candidate.BaseType == typeof(LogicBase<>).MakeGenericType(domainType)
                              orderby score 
                              select candidate)
                              .ToList();
@@ -331,7 +356,7 @@ namespace MData.Core
         }
 
         /// <summary>
-        /// 
+        /// This method will create implementations for the getter/setter of property in a domain interface
         /// </summary>
         /// <param name="mDataInferface"></param>
         /// <param name="generatedTypeBuilder"></param>
@@ -340,63 +365,98 @@ namespace MData.Core
         private void MapProperties(Type mDataInferface, TypeBuilderHelper generatedTypeBuilder, Type entityBase,
                                    FieldBuilder logicField)
         {
-            foreach (PropertyInfo p in mDataInferface.GetProperties())
+            foreach (var p in mDataInferface.GetProperties())
             {
-                PropertyBuilder property = generatedTypeBuilder.TypeBuilder.DefineProperty(p.Name,
-                                                                                           PropertyAttributes.None,
-                                                                                           p.PropertyType, null);
+                var propType = p.PropertyType;
+                
+                propType = ReplacePropertyTypeIfNeede(propType);
 
-                MethodInfo getDecl = p.GetGetMethod();
-                MethodInfo setDecl = p.GetSetMethod();
-
-                CreatePropertyGetMethod(generatedTypeBuilder, p, property, getDecl, entityBase, logicField);
-                CreatePropertySetMethod(generatedTypeBuilder, p, property, setDecl, entityBase, logicField);
+                //create the property definition
+                var property = generatedTypeBuilder.TypeBuilder.DefineProperty(p.Name, PropertyAttributes.None, propType, null);
+                
+                //generate getter/setter logic
+                CreatePropertyGetMethod(generatedTypeBuilder, p, property, p.GetGetMethod(), logicField);
+                CreatePropertySetMethod(generatedTypeBuilder, p, property, p.GetSetMethod(), logicField);
             }
         }
 
-        private void CreatePropertyGetMethod(TypeBuilderHelper generatedTypeBuilder, PropertyInfo p,
-                                             PropertyBuilder property, MethodInfo getDecl, Type entityBase,
-                                             FieldBuilder logicField)
+        private Type ReplacePropertyTypeIfNeede(Type propType)
         {
-            string name = getDecl == null ? "get_" + p.Name : getDecl.Name;
-            Type returnType = getDecl == null ? p.PropertyType : getDecl.ReturnType;
-            Type[] parameterTypes = getDecl == null
-                                        ? null
-                                        : getDecl.GetParameters().Select(x => x.ParameterType).ToArray();
-            MethodAttributes methodAttributes = getDecl == null
-                                                    ? MethodAttributes.Private
-                                                    : MethodAttributes.Public | MethodAttributes.Virtual;
+            if (propType.IsInterface || propType.GetGenericArguments().Any(x => x.IsInterface))
+            {
+                if(propType.GetGenericTypeDefinition() == typeof(ICollection<>))
+                {
+                    var genericArgument = propType.GetGenericArguments()[0];
+                    propType = typeof(ICollection<>).MakeGenericType(RegisterDomainInterface(genericArgument, GetLogicClass(genericArgument)));
+                }
+                else if (RegisterDomainInterface(propType, GetLogicClass(propType)) != null)
+                {
+                    propType = RegisterDomainInterface(propType, GetLogicClass(propType));
+                }
+            }
 
-            MethodBuilderHelper getBuilder = generatedTypeBuilder.DefineMethod(name, methodAttributes,
-                                                                               returnType,
-                                                                               parameterTypes);
+            return propType;
+        }
 
+        /// <summary>
+        /// Creates the body of a property getter
+        /// </summary>
+        /// <param name="generatedTypeBuilder"></param>
+        /// <param name="p"></param>
+        /// <param name="property"></param>
+        /// <param name="getDecl"></param>
+        /// <param name="logicField"></param>
+        private void CreatePropertyGetMethod(TypeBuilderHelper generatedTypeBuilder, PropertyInfo p,
+                                             PropertyBuilder property, MethodInfo getDecl, FieldInfo logicField)
+        {
+            //set setter name and return type
+            var setterName = getDecl == null ? "get_" + p.Name : getDecl.Name;
+            var returnType = getDecl == null ? p.PropertyType : getDecl.ReturnType;
+            
+            //determine security attributes
+            var methodAttributes = MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig | MethodAttributes.Virtual;
+
+            //create setter method
+            var getBuilder = generatedTypeBuilder.DefineMethod(setterName, methodAttributes, returnType, null);
+
+            //emit IL opcode
             getBuilder
                 .Emitter
                 .nop
-                .ldarg_0
-                .ldfld(logicField)
-                .ldstr(p.Name)
-                .callvirt(Reflect<LogicBase>.GetMethod(x=>x.GetProperty<object>(string.Empty)).MakeGenericMethod(p.PropertyType))
+                .ldarg_0                
+                .ldfld(logicField)      
+                .ldstr(p.Name)          
+                //this.LogicBase<[logicField.FieldType]>.GetProperty([methodName])
+                .callvirt(Reflect<LogicBase>.GetMethod(x => x.GetProperty<object>(string.Empty)).MakeGenericMethod(p.PropertyType)) 
                 .ret();
 
+            //apply the created method to the getter
             property.SetGetMethod(getBuilder);
         }
 
+        /// <summary>
+        /// Creates the body of a property setter
+        /// </summary>
+        /// <param name="generatedTypeBuilder"></param>
+        /// <param name="p"></param>
+        /// <param name="property"></param>
+        /// <param name="setDecl"></param>
+        /// <param name="logicField"></param>
         private void CreatePropertySetMethod(TypeBuilderHelper generatedTypeBuilder, PropertyInfo p,
-                                             PropertyBuilder property, MethodInfo setDecl, Type entityBase,
-                                             FieldBuilder logicField)
+                                             PropertyBuilder property, MethodInfo setDecl, FieldInfo logicField)
         {
-            string name = setDecl == null ? "set_" + p.Name : setDecl.Name;
-            Type[] parameterTypes = setDecl == null
-                                        ? new[] {p.PropertyType}
-                                        : setDecl.GetParameters().Select(x => x.ParameterType).ToArray();
-            MethodAttributes methodAttributes = setDecl == null
-                                                    ? MethodAttributes.Private
-                                                    : MethodAttributes.Public | MethodAttributes.Virtual;
-            MethodBuilderHelper setBuilder = generatedTypeBuilder.DefineMethod(name, methodAttributes, null,
-                                                                               parameterTypes);
+            //set getter name and parameter types
+            var name = setDecl == null ? "set_" + p.Name : setDecl.Name;
+            var parameterTypes = setDecl == null ? new[] { p.PropertyType }
+                                                 : setDecl.GetParameters().Select(x => x.ParameterType).ToArray();
 
+            //set attributes on setter
+            var methodAttributes = MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig | MethodAttributes.Virtual;
+
+            //build setter method
+            var setBuilder = generatedTypeBuilder.DefineMethod(name, methodAttributes, null, parameterTypes);
+
+            //spit out IL
             setBuilder
                 .Emitter
                 .ldarg_0
@@ -407,19 +467,28 @@ namespace MData.Core
                 .nop
                 .ret();
 
+            //apply setter method to the property
             property.SetSetMethod(setBuilder);
         }
 
-        private void CreateConstructorLogic(IEnumerable<FieldBuilder> fieldsToInit,
-                                            TypeBuilderHelper generatedTypeBuilder, Type entityBase)
+        /// <summary>
+        /// Creates a constructor for a generated class. The constructor will call Init on the Logic classes.
+        /// </summary>
+        /// <param name="fieldsToInit"></param>
+        /// <param name="generatedTypeBuilder"></param>
+        /// <param name="entityBase"></param>
+        private void CreateConstructorLogic(IEnumerable<FieldBuilder> fieldsToInit, TypeBuilderHelper generatedTypeBuilder, Type entityBase)
         {
-            EmitHelper constructor = generatedTypeBuilder.DefinePublicConstructor().Emitter;
+            //define public constructor
+            var constructor = generatedTypeBuilder.DefinePublicConstructor().Emitter;
 
+            //call base()
             constructor = constructor
                 .ldarg_0
                 .call(entityBase.GetConstructor(new Type[] {}));
 
-            foreach (FieldBuilder fieldBuilder in fieldsToInit)
+            //initialize all fields
+            foreach (var fieldBuilder in fieldsToInit)
             {
                 constructor
                     .ldarg_0
@@ -428,18 +497,24 @@ namespace MData.Core
                     .ldarg_0
                     .ldfld(fieldBuilder)
                     .ldarg_0
-                    .callvirt(
-                        typeof (LogicBase<>).MakeGenericType(fieldBuilder.FieldType).GetMethod("set_CurrentInstance"));
+                    .callvirt(typeof (LogicBase<>).MakeGenericType(fieldBuilder.FieldType).GetMethod("set_CurrentInstance"));
             }
 
+            //exit constructor
             constructor.ret();
         }
 
-        private void MapMethods(FieldInfo logicField, Type logicClass, Type mDataInferface,
-                                TypeBuilderHelper type)
+        /// <summary>
+        /// All interface methods are implemented in the generated class in here
+        /// </summary>
+        /// <param name="logicField"></param>
+        /// <param name="logicClass"></param>
+        /// <param name="mDataInferface"></param>
+        /// <param name="type"></param>
+        private void MapMethods(FieldInfo logicField, Type logicClass, Type mDataInferface, TypeBuilderHelper type)
         {
             //loop all methods of the interface definition
-            foreach (MethodInfo methodInfo in mDataInferface.GetMethods())
+            foreach (var methodInfo in mDataInferface.GetMethods())
             {
                 //only implement Methods
                 if (methodInfo.MemberType != MemberTypes.Method)
@@ -449,8 +524,10 @@ namespace MData.Core
                 if (methodInfo.Name.StartsWith("get_") || methodInfo.Name.StartsWith("set_"))
                     continue;
 
-                ParameterInfo[] methodParameters = methodInfo.GetParameters();
-                Type[] methodGenericArguments = methodInfo.GetGenericArguments();
+                //get method parameters and generic arguments
+                var methodParameters = methodInfo.GetParameters();
+                var methodGenericArguments = methodInfo.GetGenericArguments();
+
                 MethodBuilderHelper methodBuilder;
 
                 //check if we got to define a generic method or not
@@ -471,7 +548,7 @@ namespace MData.Core
                 }
 
                 //get hold of the method emitter
-                EmitHelper emit = methodBuilder.Emitter;
+                var emit = methodBuilder.Emitter;
 
                 if (methodParameters.Any())
                     emit.DeclareLocal(typeof (object[]));
@@ -481,14 +558,16 @@ namespace MData.Core
                     .ldarg(0)
                     .ldfld(logicField);
 
-                MethodInfo logicMethod = GetLogicMethod(logicClass, methodInfo);
+                var logicMethod = GetLogicMethod(logicClass, methodInfo);
 
+                //logicmethod == null so we have to call UnImplemented*MethodCall function
                 if (logicMethod == null)
                 {
                     logicMethod = methodInfo.ReturnType == typeof (void)
                                       ? Reflect<LogicBase>.GetMethod(x=>x.UnImplementedNoReturnMethodCall(string.Empty))
                                       : Reflect<LogicBase>.GetMethod(x => x.UnImplementedMethodCall<object>(string.Empty)).MakeGenericMethod(methodInfo.ReturnType);
 
+                    //we store the parameters in a new object[] so we can pass them to the UnImpl methods
                     emit = emit
                         .ldc_i4_(methodParameters.Count())
                         .newarr(typeof (object));
@@ -497,21 +576,24 @@ namespace MData.Core
                     {
                         emit = emit.stloc_0;
 
-                        for (int index = 0; index < methodParameters.Length; index++)
+                        for (var index = 0; index < methodParameters.Length; index++)
                         {
                             emit
                                 .ldloc_0
                                 .ldc_i4_(index)
                                 .ldarg(index + 1);
 
+                            //box value type (int, etc) and generic parameter (e.g. 'T')
                             if (methodParameters[index].ParameterType.IsValueType ||
                                 methodParameters[index].ParameterType.IsGenericParameter)
                                 emit.box(methodParameters[index].ParameterType);
 
+                            //store the first stack element in the array defined in the upper stack
                             emit = emit
                                 .stelem_ref;
                         }
 
+                        //load method name
                         emit = emit
                             .ldstr(methodInfo.Name)
                             .ldloc_0;
@@ -522,7 +604,7 @@ namespace MData.Core
                 else
                 {
                     //load all method parameters onto stack
-                    foreach (ParameterInfo parameterInfo in methodParameters)
+                    foreach (var parameterInfo in methodParameters)
                     {
                         emit.ldarg(parameterInfo);
                     }
