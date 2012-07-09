@@ -46,6 +46,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Attributes\MDataMethodAttribute.cs" />
+    <Compile Include="Attributes\MDataNonPersistAttribute.cs" />
     <Compile Include="Core\Base\LogicBase.cs" />
     <Compile Include="Core\Base\EntityBase.cs" />
     <Compile Include="Attributes\MDataAttribute.cs" />

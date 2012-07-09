@@ -23,6 +23,7 @@ namespace MData.Core
         private readonly ICollection<string> _scannedAssemblies;
         
         private Assembly _previouslyGeneratedAssembly;
+        private Dictionary<Type, Type> _domainCache;
 
         /// <summary>
         /// Creates a new instance of the TypeCreator class
@@ -38,6 +39,24 @@ namespace MData.Core
             
             _scannedAssemblies = new Collection<string>();
             _domainToLogic = new Dictionary<Type, Type>();
+
+            _domainCache = new Dictionary<Type, Type>();
+        }
+
+        internal void AutoDiscover(IResolver resolver)
+        {
+            var types = _configurator.Assemblies.SelectMany(x => x.GetTypes()).Where(x => x.HasAttribute<MDataAttribute>()).Select(x => x);
+            
+            foreach (var assembly in _configurator.Assemblies)
+            {
+                RegisterAssembly(assembly);
+            }
+
+            foreach (var type in types)
+            {
+                RegisterDomainInterface(type, GetLogicClass(type));
+                resolver.Resolve(type);
+            }
         }
 
         /// <summary>
@@ -99,6 +118,8 @@ namespace MData.Core
             if (!domainType.IsInterface)
                 return null;
 
+            if (_domainCache.ContainsKey(domainType))
+                return _domainCache[domainType];
 #if !DEBUG
             //reuse of previoulsy generated assembly is only allowed in release mode
             if (!_configurator.ShouldAlwaysRecreate && File.Exists(_configurator.AssemblyNameForStorage))
@@ -146,7 +167,11 @@ namespace MData.Core
             CreateConstructorLogic(generatedFields.Select(x => x.Value), typeBuilder, _configurator.EntityType);
 
             //create the concrete type for domainType
-            return typeBuilder.Create();
+            var registerDomainInterface = typeBuilder.Create();
+
+            _domainCache.Add(domainType, registerDomainInterface);
+
+            return registerDomainInterface;
         }
 
         /// <summary>
@@ -317,7 +342,7 @@ namespace MData.Core
             //the Mdatalogic attr go first, then logicclasses who have the default logic name convention, last all others
             var candidates = (from candidate in types
                              let score = candidate.HasAttribute<MDataLogicAttribute>() ? 0 : candidate.Name == defaultImplementationName ? 1 : 2
-                             where candidate.IsAssignableFrom(typeof(LogicBase<>).MakeGenericType(domainType))
+                             where candidate.BaseType == typeof(LogicBase<>).MakeGenericType(domainType)
                              orderby score 
                              select candidate)
                              .ToList();
@@ -342,13 +367,35 @@ namespace MData.Core
         {
             foreach (var p in mDataInferface.GetProperties())
             {
-                //create the property definition
-                var property = generatedTypeBuilder.TypeBuilder.DefineProperty(p.Name, PropertyAttributes.None, p.PropertyType, null);
+                var propType = p.PropertyType;
+                
+                propType = ReplacePropertyTypeIfNeede(propType);
 
+                //create the property definition
+                var property = generatedTypeBuilder.TypeBuilder.DefineProperty(p.Name, PropertyAttributes.None, propType, null);
+                
                 //generate getter/setter logic
                 CreatePropertyGetMethod(generatedTypeBuilder, p, property, p.GetGetMethod(), logicField);
                 CreatePropertySetMethod(generatedTypeBuilder, p, property, p.GetSetMethod(), logicField);
             }
+        }
+
+        private Type ReplacePropertyTypeIfNeede(Type propType)
+        {
+            if (propType.IsInterface || propType.GetGenericArguments().Any(x => x.IsInterface))
+            {
+                if(propType.GetGenericTypeDefinition() == typeof(ICollection<>))
+                {
+                    var genericArgument = propType.GetGenericArguments()[0];
+                    propType = typeof(ICollection<>).MakeGenericType(RegisterDomainInterface(genericArgument, GetLogicClass(genericArgument)));
+                }
+                else if (RegisterDomainInterface(propType, GetLogicClass(propType)) != null)
+                {
+                    propType = RegisterDomainInterface(propType, GetLogicClass(propType));
+                }
+            }
+
+            return propType;
         }
 
         /// <summary>
@@ -367,8 +414,7 @@ namespace MData.Core
             var returnType = getDecl == null ? p.PropertyType : getDecl.ReturnType;
             
             //determine security attributes
-            var methodAttributes = getDecl == null  ? MethodAttributes.Private
-                                                    : MethodAttributes.Public | MethodAttributes.Virtual;
+            var methodAttributes = MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig | MethodAttributes.Virtual;
 
             //create setter method
             var getBuilder = generatedTypeBuilder.DefineMethod(setterName, methodAttributes, returnType, null);
@@ -405,8 +451,7 @@ namespace MData.Core
                                                  : setDecl.GetParameters().Select(x => x.ParameterType).ToArray();
 
             //set attributes on setter
-            var methodAttributes = setDecl == null  ? MethodAttributes.Private
-                                                    : MethodAttributes.Public | MethodAttributes.Virtual;
+            var methodAttributes = MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig | MethodAttributes.Virtual;
 
             //build setter method
             var setBuilder = generatedTypeBuilder.DefineMethod(name, methodAttributes, null, parameterTypes);

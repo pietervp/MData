@@ -2,7 +2,7 @@ using MData.Attributes;
 
 namespace MData.SandBox
 {
-    [MData("IdClass")]
+    [MData("IdClass", false)]
     public interface IId
     {
         int Id { get; set; }

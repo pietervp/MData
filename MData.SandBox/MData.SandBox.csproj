@@ -43,6 +43,7 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Logic\AuditableLogic.cs" />
     <Compile Include="Model\IAdmin.cs" />
     <Compile Include="Model\ICustomer.cs" />
     <Compile Include="Model\ICustomerMethod.cs" />
@@ -50,7 +51,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="DomainContext.cs" />
-    <Compile Include="Logic\TestLogic.cs" />
+    <Compile Include="Logic\CustomerLogic.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MData.EF\MData.EF.csproj">

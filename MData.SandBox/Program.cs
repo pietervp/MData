@@ -16,14 +16,16 @@ namespace MData.SandBox
             using (DomainContext t = new DomainContext())
             {
                 //all CRUD operations work
-                ICustomer customer = t.Customers.Create();
+                var customer = t.Customers.Create();
                 t.Customers.Add(customer);
-
-                ICustomer firstCustomerEver = t.Customers.FirstOrDefault(x => x.Id == 1);
-
+                
+                var contact = t.Contacts.Create();
+                contact.Name = string.Format("Contact {0}", contact.Id);
+                customer.Contacts = contact;
+                t.Contacts.Add(contact);
+                
                 t.SaveChanges();
             }
         }
-
     }
 }

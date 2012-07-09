@@ -6,7 +6,10 @@ namespace MData.Core.Configuration
     public interface IResolver
     {
         T Resolve<T>() where T : class;
-        Dictionary<Type, Type> GetInterfaceMapping();
+        object Resolve(Type type);
+
+        Dictionary<Type, Type> GetPersistableInterfaceMapping();
         Type GetConcreteType(Type type);
+        IResolver AutoDiscover();
     }
 }

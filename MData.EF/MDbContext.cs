@@ -38,7 +38,7 @@ namespace MData.EF
         /// </remarks>
         public new DbSet Set(Type entityType)
         {
-            return base.Set(Resolver.GetInterfaceMapping()[entityType]);
+            return base.Set(Resolver.GetPersistableInterfaceMapping()[entityType]);
         }
 
         /// <summary>
@@ -153,13 +153,13 @@ namespace MData.EF
             modelBuilder = new MDbModelBuilder(modelBuilder);
 
             base.OnModelCreating(modelBuilder);
-
-            foreach (var mapping in Resolver.GetInterfaceMapping())
+            
+            foreach (var mapping in Resolver.GetPersistableInterfaceMapping())
             {
-                var entityTypeConfiguration = Reflect<DbModelBuilder>.GetMethod(x => x.Entity<object>()).GetGenericMethodDefinition().MakeGenericMethod(mapping.Value).Invoke(modelBuilder, null);
-                var toTableMethod = Reflect<EntityTypeConfiguration<object>>.GetMethod(x => x.ToTable(string.Empty));
-                var hasSetNameMethod = Reflect<EntityTypeConfiguration<object>>.GetMethod(x => x.HasEntitySetName(string.Empty));
-
+                var entityTypeConfiguration = modelBuilder.GetType().GetMethod("Entity").MakeGenericMethod(mapping.Value).Invoke(modelBuilder, null);
+                var toTableMethod = entityTypeConfiguration.GetType().GetMethod("ToTable", new[] { typeof(string) });
+                var hasSetNameMethod = entityTypeConfiguration.GetType().GetMethod("HasEntitySetName", new[] { typeof(string) });
+                
                 toTableMethod.Invoke(entityTypeConfiguration, new object[] { mapping.Key.Name });
                 hasSetNameMethod.Invoke(entityTypeConfiguration, new object[] { string.Format("{0}Set", mapping.Key.Name) });
             }
@@ -191,12 +191,12 @@ namespace MData.EF
             return _internalBuilder.Ignore(types.Select(x => _defaultResolver.GetConcreteType(x)));
         }
 
-        public override  EntityTypeConfiguration<TEntityType> Entity<TEntityType>() where TEntityType : class
+        public override  EntityTypeConfiguration<TEntityType> Entity<TEntityType>()
         {
             return _internalBuilder.Entity<TEntityType>();
         }
 
-        public override  ComplexTypeConfiguration<TComplexType> ComplexType<TComplexType>() where TComplexType : class
+        public override  ComplexTypeConfiguration<TComplexType> ComplexType<TComplexType>()
         {
             return _internalBuilder.ComplexType<TComplexType>();
         }
@@ -213,8 +213,6 @@ namespace MData.EF
 
         public void AddConfiguration<T>(EntityTypeConfiguration<T> configuration) where T : class
         {
-            //configuration.
-
             Configurations.Add(configuration);
         }
 
